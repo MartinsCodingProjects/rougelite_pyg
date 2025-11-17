@@ -1,0 +1,52 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+env/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+.env
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# VS Code settings
+.vscode/
+
+# Pygbag build output (exclude build/ only for pygbag)
+build/
+
+# Logs
+*.log
+
+# Test output
+htmlcov/
+.coverage
+.tox/
+
+# MacOS
+.DS_Store
+
+# Windows
+Thumbs.db
+*.bak
+
+# Other
+*.swp
+*.swo
+
+# Ignore version.txt and web-cache if needed
+build/version.txt
+build/web-cache/
