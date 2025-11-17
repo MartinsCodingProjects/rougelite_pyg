@@ -11,13 +11,35 @@ class Player(pygame.sprite.Sprite):
         self.height = player_height
 
         pygame.sprite.Sprite.__init__(self)
-        self.color = (255, 0, 0)  # red
-        self.image = pygame.Surface((self.width, self.height))
-        self.image.fill(self.color)
 
-        # Draw black dot in center of the red square for debugging
-        pygame.draw.circle(self.image, (0, 0, 0), (20, 20), 3)
+        # Load and setup sprite sheet
+        self.sprite_sheet = pygame.image.load(
+            "game/assets/char1/walk.png").convert_alpha()
+        self.frame_width = self.sprite_sheet.get_width() // 6  # 6 frames per row
+        self.frame_height = self.sprite_sheet.get_height() // 4  # 4 rows
 
+        # Animation state
+        self.current_frame = 0
+        self.animation_speed = 10  # frames per second
+        self.animation_timer = 0
+        self.direction = 'down'  # default direction
+        self.is_moving = False
+
+        # Extract all frames from sprite sheet
+        self.frames = {}
+        directions = ['down', 'left', 'right', 'up']
+        for row, direction in enumerate(directions):
+            self.frames[direction] = []
+            for col in range(6):
+                frame = pygame.Surface(
+                    (self.frame_width, self.frame_height), pygame.SRCALPHA)
+                frame.blit(self.sprite_sheet, (0, 0),
+                           (col * self.frame_width, row * self.frame_height,
+                           self.frame_width, self.frame_height))
+                self.frames[direction].append(frame)
+
+        # Set initial image
+        self.image = self.frames['down'][0]
         self.rect = self.image.get_rect()
         self.rect.center = (pos.x if pos else 640, pos.y if pos else 360)
 
@@ -39,15 +61,25 @@ class Player(pygame.sprite.Sprite):
 
         # Apply movement with boundary checking
         new_pos = pygame.Vector2(self.pos)
+        self.is_moving = False
 
+        # Check movement and set direction
         if input_state.up:
             new_pos.y -= self.speed * dt
+            self.direction = 'up'
+            self.is_moving = True
         if input_state.down:
             new_pos.y += self.speed * dt
+            self.direction = 'down'
+            self.is_moving = True
         if input_state.left:
             new_pos.x -= self.speed * dt
+            self.direction = 'left'
+            self.is_moving = True
         if input_state.right:
             new_pos.x += self.speed * dt
+            self.direction = 'right'
+            self.is_moving = True
 
         # Clamp position to world boundaries (keeping player fully inside)
         half_width = self.width / 2
@@ -60,6 +92,9 @@ class Player(pygame.sprite.Sprite):
 
         self.pos = new_pos
 
+        # Update animation
+        self.update_animation(dt)
+
         # Sync position back to rect (important for sprite drawing)
         self.rect.center = (int(self.pos.x), int(self.pos.y))
 
@@ -71,13 +106,13 @@ class Player(pygame.sprite.Sprite):
         world_offset = world.get_draw_offset()
 
         # Draw the player sprite with offset
-        offset_pos = (
+        # Center the sprite image on the player's position
+        sprite_rect = self.image.get_rect()
+        sprite_rect.center = (
             int(self.rect.centerx + world_offset[0]),
             int(self.rect.centery + world_offset[1])
         )
-        draw_rect = self.rect.copy()
-        draw_rect.center = offset_pos
-        world.surface.blit(self.image, draw_rect)
+        world.surface.blit(self.image, sprite_rect)
 
         # Draw the player's weapons (they need offset too)
         self.weapons.draw(world.surface, world_offset)
@@ -106,3 +141,21 @@ class Player(pygame.sprite.Sprite):
         # sort by distance and return the n closest
         enemies_with_distance.sort(key=lambda x: x[0])
         return enemies_with_distance[:n]
+
+    def update_animation(self, dt):
+        """Update sprite animation based on movement"""
+        if self.is_moving:
+            # Update animation timer
+            self.animation_timer += dt
+
+            # Change frame when timer exceeds frame duration
+            if self.animation_timer >= 1.0 / self.animation_speed:
+                self.animation_timer = 0
+                self.current_frame = (self.current_frame + 1) % 6
+        else:
+            # Reset to first frame when not moving
+            self.current_frame = 0
+            self.animation_timer = 0
+
+        # Update the image based on direction and frame
+        self.image = self.frames[self.direction][self.current_frame]
