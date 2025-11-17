@@ -18,14 +18,26 @@ class Weapon(pygame.sprite.Sprite):
         self.pos = pygame.Vector2(0, 0)
         self.direction = pygame.Vector2(0, 0)
 
-        # let the weapen be a sprite rect that is drawn on screen
-        # hovering next to the player
-        self.image_orig = pygame.Surface((20, 10))
-        self.image_orig.set_colorkey((0, 0, 0))  # transparent background
-        self.image_orig.fill((0, 255, 0))  # green for testing
+        # Load weapon sprite based on weapon name
+        if name == "dagger":
+            try:
+                # Load dagger sprite
+                dagger_sprite = pygame.image.load("game/assets/dagger.png").convert_alpha()
+                # Scale to desired weapon size (20x10 was the original rectangle size)
+                self.image_orig = pygame.transform.scale(dagger_sprite, (20, 10))
+            except Exception:
+                # Fallback to green rectangle if sprite can't be loaded
+                self.image_orig = pygame.Surface((20, 10))
+                self.image_orig.set_colorkey((0, 0, 0))
+                self.image_orig.fill((0, 255, 0))
+        else:
+            # Default weapon appearance for other weapons
+            self.image_orig = pygame.Surface((20, 10))
+            self.image_orig.set_colorkey((0, 0, 0))
+            self.image_orig.fill((0, 255, 0))
+        
         # create working copy
         self.image = self.image_orig.copy()
-        self.image.set_colorkey((0, 0, 0))
         self.rect = self.image.get_rect()
         self.visible = True
 

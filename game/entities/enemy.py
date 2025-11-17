@@ -312,7 +312,7 @@ class Enemy(pygame.sprite.Sprite):
 
         # Get the original frame
         original_frame = self.frames[self.current_frame]
-        
+
         # Apply horizontal flipping based on direction
         if self.direction.x > 0:  # Moving right
             original_frame = pygame.transform.flip(original_frame, True, False)

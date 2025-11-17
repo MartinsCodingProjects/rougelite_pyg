@@ -7,11 +7,11 @@ class Projectile(pygame.sprite.Sprite):
         self.weapon = weapon
         self.target = target
         self.damage = damage
-        # Create a bright, visible projectile image
         # Create a copy of the weapon's image so it stays visible when weapon is hidden
         self.image = self.weapon.image.copy()
-        # self.image.fill((255, 0, 255))  # Bright magenta - very visible
         self.rect = self.image.get_rect()
+        # Create collision mask for pixel-perfect collision
+        self.mask = pygame.mask.from_surface(self.image)
         self.pos = pygame.Vector2(self.weapon.pos)
         self.attack = attack
         self.direction = self.weapon.direction
