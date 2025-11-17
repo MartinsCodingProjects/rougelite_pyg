@@ -3,15 +3,54 @@ import math
 
 
 class Enemy(pygame.sprite.Sprite):
-    def __init__(self, game, event_scheduler, pos: pygame.Vector2 = None, speed: float = 150.0, width: int = 20, height: int = 20):
+    def __init__(self, game, event_scheduler, pos: pygame.Vector2 = None, speed: float = 150.0, width: int = 30, height: int = 30):
         super().__init__()
         self.width = width
         self.height = height
-        self.color = (0, 0, 255)  # blue
-        self.image = pygame.Surface((self.width, self.height))
-        self.image.fill(self.color)
-        self.rect = self.image.get_rect(
-            center=(pos.x, pos.y) if pos else (640, 360))
+        # Replace the simple rectangle with an animated sprite sheet
+        # Load slime sprite sheet (1 row x 5 cols, 80x14)
+        try:
+            self.sprite_sheet = pygame.image.load(
+                "game/assets/grey_slime_walkin_sheet.png").convert_alpha()
+        except Exception:
+            # Fallback to a colored rectangle if the sprite can't be loaded
+            self.sprite_sheet = None
+
+        if self.sprite_sheet:
+            self.slime_frame_count = 5
+            sheet_w, sheet_h = self.sprite_sheet.get_size()
+            frame_w = sheet_w // self.slime_frame_count
+            frame_h = sheet_h
+            # Extract and scale frames to (width, height)
+            self.frames = []
+            for i in range(self.slime_frame_count):
+                frame = pygame.Surface((frame_w, frame_h), pygame.SRCALPHA)
+                frame.blit(self.sprite_sheet, (0, 0),
+                           (i * frame_w, 0, frame_w, frame_h))
+                scaled = pygame.transform.scale(
+                    frame, (self.width, self.height))
+                self.frames.append(scaled)
+
+            # Animation state
+            self.current_frame = 0
+            self.animation_speed = 8.0  # frames per second for slime
+            self.animation_timer = 0.0
+
+            # Color filter state
+            self.color_filter = None  # None = normal, (R,G,B) = tinted
+
+            self.image = self.frames[0]
+            self.rect = self.image.get_rect(
+                center=(pos.x, pos.y) if pos else (640, 360))
+            self.mask = pygame.mask.from_surface(self.image)
+        else:
+            self.color = (0, 0, 255)  # blue
+            self.image = pygame.Surface((self.width, self.height))
+            self.image.fill(self.color)
+            self.rect = self.image.get_rect(
+                center=(pos.x, pos.y) if pos else (640, 360))
+            self.mask = pygame.mask.from_surface(self.image)
+            self.frames = None  # No sprite frames available
         self.pos = pos or pygame.Vector2(640, 360)
         self.speed = speed
         self.is_melee = True
@@ -79,6 +118,10 @@ class Enemy(pygame.sprite.Sprite):
         self.update_direction(dt)
 
         # Step 6: Diced action decision based on collision
+        # Animate (if using sprite frames)
+        if hasattr(self, 'frames') and self.frames:
+            self.update_animation(dt)
+
         self.decide_action(dt, players, world)
 
     def update_direction(self, dt: float) -> None:
@@ -174,17 +217,49 @@ class Enemy(pygame.sprite.Sprite):
         self.rect.center = (int(self.pos.x), int(self.pos.y))
 
     def check_collision_at_position(self, new_pos: pygame.Vector2, players) -> bool:
-        """Check if moving to new_pos would cause collision with any player"""
+        """Check if moving to new_pos would cause collision with any player using pixel-perfect detection"""
         # Create a temporary rect at the new position
         temp_rect = pygame.Rect(0, 0, self.width, self.height)
         temp_rect.center = (int(new_pos.x), int(new_pos.y))
 
         # Check collision with each player
         for player in players:
-            if temp_rect.colliderect(player.rect):
+            # First do a quick rect check for performance
+            if not temp_rect.colliderect(player.rect):
+                continue
+
+            # If rects overlap, do pixel-perfect collision check
+            if hasattr(player, 'mask') and self.mask:
+                # Calculate offset between enemy at new position and player
+                offset_x = player.rect.x - temp_rect.x
+                offset_y = player.rect.y - temp_rect.y
+
+                # Check if masks overlap
+                if self.mask.overlap(player.mask, (offset_x, offset_y)) is not None:
+                    return True
+            else:
+                # Fallback to rect collision if no masks available
                 return True
 
         return False
+
+    def update_animation(self, dt: float) -> None:
+        """Advance slime animation frames and update mask"""
+        if not hasattr(self, 'frames') or not self.frames:
+            return
+
+        self.animation_timer += dt
+        if self.animation_timer >= 1.0 / self.animation_speed:
+            self.animation_timer = 0.0
+            self.current_frame = (self.current_frame + 1) % len(self.frames)
+
+            # Apply current color filter to new frame
+            self.apply_color_filter(self.color_filter)
+
+            # Update rect to match new frame size/shape
+            old_center = self.rect.center
+            self.rect = self.image.get_rect()
+            self.rect.center = old_center
 
     def attack_melee(self) -> None:
         """Perform melee attack when touching a player"""
@@ -202,8 +277,9 @@ class Enemy(pygame.sprite.Sprite):
     def take_damage(self, damage, source=None):
         """Handle taking damage from projectiles or other sources"""
         self.health -= damage
-        self.color = (255, 165, 0)  # flash orange on hit
-        self.image.fill(self.color)
+
+        # Apply orange color filter when hit
+        self.apply_color_filter((255, 165, 0))  # Orange tint
 
         # Handle death
         if self.health <= 0:
@@ -212,12 +288,54 @@ class Enemy(pygame.sprite.Sprite):
     def on_death(self, source=None):
         """Handle enemy death"""
         print(f"Enemy died! Source: {source}")
-        # Visual effect when dying
-        self.color = (255, 0, 0)  # Turn red briefly
+        # Visual effect when dying - apply red color filter
+        self.apply_color_filter((255, 0, 0))  # Red tint
         self.game.kill_counter += 1
-        self.image.fill(self.color)
+
         self.state = "dead"
         self.event_scheduler.schedule_event(
             pygame.time.get_ticks() / 1000.0 + 1, self.kill)  # kill after 1s
         # Remove from all sprite groups
         # self.kill()
+
+    def apply_color_filter(self, color_filter):
+        """Apply a color filter to the current sprite frame"""
+        if not self.frames or self.current_frame >= len(self.frames):
+            # Fallback to colored rectangle if no sprite frames
+            if not hasattr(self, 'color'):
+                self.color = (0, 0, 255)  # default blue
+            if color_filter:
+                self.color = color_filter
+            self.image.fill(self.color)
+            self.mask = pygame.mask.from_surface(self.image)
+            return
+
+        # Get the original frame
+        original_frame = self.frames[self.current_frame]
+        
+        # Apply horizontal flipping based on direction
+        if self.direction.x > 0:  # Moving right
+            original_frame = pygame.transform.flip(original_frame, True, False)
+        # If direction.x <= 0, use original (faces left by default)
+
+        if color_filter is None:
+            # No filter, use original (possibly flipped)
+            self.image = original_frame.copy()
+        else:
+            # Apply color filter
+            self.image = original_frame.copy()
+            # Create a colored overlay
+            overlay = pygame.Surface(self.image.get_size(), pygame.SRCALPHA)
+            overlay.fill((*color_filter, 128))  # Semi-transparent color
+            self.image.blit(overlay, (0, 0),
+                            special_flags=pygame.BLEND_MULT)
+
+        # Update mask for new colored image
+        self.mask = pygame.mask.from_surface(self.image)
+
+        # Store current filter state
+        self.color_filter = color_filter
+
+    def reset_color_filter(self):
+        """Remove color filter and return to normal appearance"""
+        self.apply_color_filter(None)

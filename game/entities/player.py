@@ -7,8 +7,14 @@ from game.systems.weapons import WeaponManager
 class Player(pygame.sprite.Sprite):
     def __init__(self, game, pos: pygame.Vector2 = None, speed: float = 300.0, player_width: int = 40, player_height: int = 40, enemies=None):
         self.game = game
-        self.width = player_width
-        self.height = player_height
+        # Character frames crop settings (adjust these values to match your sprite)
+        self.char_width = 14
+        self.char_height = 25
+        self.char_frame_aspect_ratio = self.char_width / self.char_height
+        self.char_frame_scale_factor = 3
+
+        self.width = self.char_width * self.char_frame_scale_factor
+        self.height = self.width / self.char_frame_aspect_ratio
 
         pygame.sprite.Sprite.__init__(self)
 
@@ -28,15 +34,32 @@ class Player(pygame.sprite.Sprite):
         # Extract all frames from sprite sheet
         self.frames = {}
         directions = ['down', 'left', 'right', 'up']
+
+        # Calculate center offset to crop the character from each frame
+        crop_x = (self.frame_width - self.char_width) // 2
+        crop_y = (self.frame_height - self.char_height) // 2
+
         for row, direction in enumerate(directions):
             self.frames[direction] = []
             for col in range(6):
-                frame = pygame.Surface(
+                # Extract the full frame first
+                full_frame = pygame.Surface(
                     (self.frame_width, self.frame_height), pygame.SRCALPHA)
-                frame.blit(self.sprite_sheet, (0, 0),
-                           (col * self.frame_width, row * self.frame_height,
-                           self.frame_width, self.frame_height))
-                self.frames[direction].append(frame)
+                full_frame.blit(self.sprite_sheet, (0, 0),
+                                (col * self.frame_width, row * self.frame_height,
+                                self.frame_width, self.frame_height))
+
+                # Crop just the character part
+                cropped_char = pygame.Surface(
+                    (self.char_width, self.char_height), pygame.SRCALPHA)
+                cropped_char.blit(full_frame, (0, 0),
+                                  (crop_x, crop_y, self.char_width, self.char_height))
+
+                # Scale up the cropped character to fill the sprite size
+                scaled_char = pygame.transform.scale(
+                    cropped_char, (self.width, self.height))
+
+                self.frames[direction].append(scaled_char)
 
         # Set initial image
         self.image = self.frames['down'][0]
@@ -54,6 +77,9 @@ class Player(pygame.sprite.Sprite):
 
         self.weapons = WeaponManager(
             player=self, starting_weapon=self.starting_weapon)
+
+        # Create collision mask for pixel-perfect collision
+        self.mask = pygame.mask.from_surface(self.image)
 
     def update(self, world, dt: float, input_state: InputState):
         # Get world boundaries
@@ -159,3 +185,34 @@ class Player(pygame.sprite.Sprite):
 
         # Update the image based on direction and frame
         self.image = self.frames[self.direction][self.current_frame]
+
+        # Update collision mask when image changes
+        self.mask = pygame.mask.from_surface(self.image)
+
+    def pixel_perfect_collision(self, other_sprite):
+        """Check for pixel-perfect collision with another sprite that has a mask"""
+        if not hasattr(other_sprite, 'mask'):
+            # Fallback to rect collision if other sprite doesn't have mask
+            return self.rect.colliderect(other_sprite.rect)
+
+        # Calculate offset between sprites
+        offset_x = other_sprite.rect.x - self.rect.x
+        offset_y = other_sprite.rect.y - self.rect.y
+
+        # Check if masks overlap
+        return self.mask.overlap(other_sprite.mask, (offset_x, offset_y)) is not None
+
+    def get_collision_rect(self):
+        """Get a tighter bounding rect based on the actual sprite content"""
+        # Get the bounding rect of non-transparent pixels
+        mask_rect = self.mask.get_bounding_rects()
+        if mask_rect:
+            # Use the first (and usually only) bounding rect
+            tight_rect = mask_rect[0]
+            # Adjust position relative to sprite's world position
+            tight_rect.x += self.rect.x
+            tight_rect.y += self.rect.y
+            return tight_rect
+        else:
+            # Fallback to regular rect if no mask bounds found
+            return self.rect
